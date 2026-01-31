@@ -2,26 +2,33 @@
 
 **RMSC 6007 Group Project | Term 2, 2025-26**
 
-## 2分钟跑通（Docker）
+## 🚀 新手首选：2分钟 Docker 一键跑通（最推荐）
 
-前置：安装 Docker Desktop 并启动
+**适合第一次上手的同学**：不用本地装 Python 环境，按步骤复制即可。
 
+**前置（只需一次）**
+1. 安装并启动 **Docker Desktop**
+2. 确保终端能运行 `docker` 命令（首次可能需要重启终端）
+
+**一步跑通**
 ```bash
 cd MethodD
 docker compose run --rm -T methodd
 ```
 
-产物：
-
+**你会得到的产物**
 - logs/run_*.log
 - outputs/checksums.md5
 - outputs/nvda_covered_call_demo.csv
 
-验收（推荐）：
-
+**验收（推荐）**
 ```bash
 make verify
 ```
+
+**常见问题（新手提示）**
+- 如果提示 `Cannot connect to the Docker daemon`：先打开 Docker Desktop 等待启动完成
+- 如果提示 `command not found: docker`：确认 Docker Desktop 已安装并重启终端
 
 ## 🎯 项目概述
 

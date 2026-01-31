@@ -1,0 +1,7 @@
+source,notes,ticker,borrow_rate
+DEMO_ONLY,静态样例仅用于演示,NVDA,0.015
+DEMO_ONLY,静态样例仅用于演示,AAPL,0.008
+DEMO_ONLY,静态样例仅用于演示,TSLA,0.025
+DEMO_ONLY,静态样例仅用于演示,AMD,0.018
+DEMO_ONLY,静态样例仅用于演示,MSFT,0.010
+DEMO_ONLY,静态样例仅用于演示,GOOGL,0.012

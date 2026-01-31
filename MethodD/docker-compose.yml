@@ -1,0 +1,11 @@
+services:
+  methodd:
+    build: .
+    container_name: methodd
+    working_dir: /app
+    volumes:
+      - ./logs:/app/logs
+      - ./outputs:/app/outputs
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Hong_Kong

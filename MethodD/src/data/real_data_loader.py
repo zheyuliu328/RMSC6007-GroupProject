@@ -193,6 +193,11 @@ def load_snapshot(path: str) -> Dict[str, object]:
         data = pd.read_json(path, typ='series').to_dict()
         if isinstance(data.get('chain'), list):
             data['chain'] = pd.DataFrame(data.get('chain', []))
+        meta = data.get('meta') or {}
+        if not data.get('timestamp') and meta.get('captured_at_utc'):
+            data['timestamp'] = meta.get('captured_at_utc')
+        if not data.get('ticker') and meta.get('ticker'):
+            data['ticker'] = meta.get('ticker')
         return data
 
     if path.endswith('.csv'):

@@ -1,34 +1,24 @@
 {
-  "data_mode_default": "OFFLINE_SNAPSHOT_REAL",
+  "mode": "OFFLINE_SNAPSHOT_REAL",
+  "ticker": "NVDA",
+  "created_at": "2026-01-31T01:57:43.339905+00:00",
+  "timezone": "CST",
   "data_source": "Yahoo Finance optionChain (query2.finance.yahoo.com/v7/finance/options)",
   "pricing_rule": "mid_else_last",
-  "ticker": "NVDA",
-  "timezone": "CST",
-  "captured_at_t0_utc": "2026-01-31T01:57:43.737232+00:00",
-  "t5_target_rule": "t0_plus_5_trading_days",
-  "expiries": [
-    "2026-02-06",
-    "2026-02-27",
-    "2026-03-06"
-  ],
   "contract_key": {
-    "ticker": "NVDA",
-    "type": "call",
-    "expiry_epoch": 1770336000,
+    "optionType": "call",
+    "expiry": "2026-02-06",
     "strike": 190.0,
     "contractSymbol": "NVDA260206C00190000"
   },
   "snapshots": {
     "t0": {
-      "2026-02-06": "nvda_chain_t0_2026-02-06_20260131_095743.json",
-      "2026-02-27": "nvda_chain_t0_2026-02-27_20260131_095743.json",
-      "2026-03-06": "nvda_chain_t0_2026-03-06_20260131_095743.json"
+      "file": "nvda_chain_t0_2026-02-06_20260131_095743.json",
+      "checksum": "5b369403ede0ddbcdb061d1f4136468dc4bb61c9d172ce78f8a4b63eacf9be4f"
     },
     "t5": {
-      "2026-02-06": "nvda_chain_t5_2026-02-06_20260131_095756.json",
-      "2026-02-27": "nvda_chain_t5_2026-02-27_20260131_095756.json",
-      "2026-03-06": "nvda_chain_t5_2026-03-06_20260131_095756.json"
+      "file": "nvda_chain_t5_2026-02-06_20260131_095756.json",
+      "checksum": "5478e96e555c21cb44084bf5d024880bad6c1420b3fddefaab6a2f0864f94ecb"
     }
-  },
-  "captured_at_t5_utc": "2026-01-31T01:57:56.499912+00:00"
+  }
 }

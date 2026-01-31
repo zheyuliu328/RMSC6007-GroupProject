@@ -1,0 +1,11 @@
+services:
+  rmsc6007:
+    build: .
+    container_name: rmsc6007_group_project
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace
+    environment:
+      - TZ=Asia/Shanghai
+    tty: true
+    stdin_open: true

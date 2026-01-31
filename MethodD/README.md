@@ -10,6 +10,17 @@
 1. 安装并启动 **Docker Desktop**
 2. 确保终端能运行 `docker` 命令（首次可能需要重启终端）
 
+**macOS 安装流程（建议 Intel/Apple Silicon 通用）**
+1. 访问 https://www.docker.com/products/docker-desktop/ 下载 macOS 安装包
+2. 按提示安装后，打开 Docker Desktop 并等待状态显示为 “Running”
+3. 终端执行 `docker version`，确认能看到客户端/服务端信息
+
+**Windows 安装流程（Win10/11）**
+1. 访问 https://www.docker.com/products/docker-desktop/ 下载 Windows 安装包
+2. 按提示安装（如提示启用 WSL2 或 Hyper-V，按向导开启后重启）
+3. 打开 Docker Desktop 等待启动完成
+4. PowerShell 执行 `docker version`，确认能看到客户端/服务端信息
+
 **一步跑通**
 ```bash
 cd MethodD

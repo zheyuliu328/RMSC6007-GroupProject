@@ -27,6 +27,23 @@
 - `docker info` 不报错，且能看到运行状态
 - 首次使用建议重启终端，避免 PATH 未刷新
 
+**FAQ（常见问题速查）**
+1. **提示 `Cannot connect to the Docker daemon`**
+   - Docker Desktop 还没完全启动，等待状态变为 Running
+   - 关闭再重新打开 Docker Desktop
+2. **提示 `command not found: docker` / `docker` 不是内部命令**
+   - 重启终端或重启电脑后再试
+   - Windows 请在 PowerShell 运行，不建议用旧版 cmd
+3. **提示需要 WSL2/Hyper-V**（Windows）
+   - 按安装向导启用并重启
+   - 重启后再次打开 Docker Desktop
+4. **首次启动卡在“Starting”**
+   - 等待 1-2 分钟；若无变化，重启 Docker Desktop
+   - 检查系统是否有安全软件阻止启动
+5. **`docker compose` 报错**
+   - 先运行 `docker version` 确认 CLI 可用
+   - 更新 Docker Desktop 到最新版本
+
 **一步跑通**
 ```bash
 cd MethodD

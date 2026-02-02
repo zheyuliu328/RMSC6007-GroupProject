@@ -146,7 +146,7 @@ def _simulate_returns(
     n_days = len(drifts)
     rets = np.zeros(n_days)
     corr = float(np.clip(corr_ret_iv, -0.95, 0.95))
-    mix_scale = np.sqrt(1 - corr ** 2)
+    mix_scale = np.sqrt(1 - corr**2)
 
     for t in range(1, n_days):
         z_ret = rng.normal(0.0, 1.0)
@@ -178,7 +178,9 @@ def _build_universe_meta(universe_df: pd.DataFrame, seed: int) -> pd.DataFrame:
     return meta[["ticker", "mcap", "beta"]]
 
 
-def _build_pool_membership(meta_df: pd.DataFrame, mcap_q: float, beta_q: float) -> pd.DataFrame:
+def _build_pool_membership(
+    meta_df: pd.DataFrame, mcap_q: float, beta_q: float
+) -> pd.DataFrame:
     mcap_thr = float(meta_df["mcap"].quantile(mcap_q))
     beta_thr = float(meta_df["beta"].quantile(beta_q))
     membership = meta_df.copy()
@@ -186,7 +188,9 @@ def _build_pool_membership(meta_df: pd.DataFrame, mcap_q: float, beta_q: float) 
     membership["beta_thr"] = beta_thr
     membership["mcap_pass"] = membership["mcap"] >= mcap_thr
     membership["beta_pass"] = membership["beta"] >= beta_thr
-    membership["in_pool"] = (membership["mcap_pass"] & membership["beta_pass"]).astype(int)
+    membership["in_pool"] = (membership["mcap_pass"] & membership["beta_pass"]).astype(
+        int
+    )
     return membership
 
 
@@ -196,9 +200,7 @@ def _compute_targets(df_prices: pd.DataFrame, df_iv: pd.DataFrame) -> pd.DataFra
     merged["spot_return_5d"] = (
         merged.groupby("ticker")["close"].shift(-5) / merged["close"] - 1
     )
-    merged["iv_change_5d"] = (
-        merged.groupby("ticker")["iv"].shift(-5) - merged["iv"]
-    )
+    merged["iv_change_5d"] = merged.groupby("ticker")["iv"].shift(-5) - merged["iv"]
     return merged[["date", "ticker", "run_id", "spot_return_5d", "iv_change_5d"]]
 
 
@@ -242,7 +244,9 @@ def _write_manifest(
     )
 
 
-def generate_dataset(config_path: Path, dataset_version: str | None, universe_path: Path) -> Path:
+def generate_dataset(
+    config_path: Path, dataset_version: str | None, universe_path: Path
+) -> Path:
     config = _load_config(config_path)
     version = dataset_version or str(config.get("dataset_version") or "v1")
     output_dir = BASE_DIR / "data" / "simulated" / "nasdaq_full" / version
@@ -332,7 +336,13 @@ def generate_dataset(config_path: Path, dataset_version: str | None, universe_pa
         )
 
         log_returns = _simulate_returns(
-            drifts, vols, iv_eps, spike_strength, local_rng, corr_ret_iv, spike_vol_boost
+            drifts,
+            vols,
+            iv_eps,
+            spike_strength,
+            local_rng,
+            corr_ret_iv,
+            spike_vol_boost,
         )
         prices = _build_prices(init_price, log_returns)
 

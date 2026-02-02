@@ -59,7 +59,9 @@ def _validate_run_id(universe_path: Path, calendar_days: int) -> int:
     return expected
 
 
-def _validate_partitions(data_dir: Path, expected_tickers: int) -> Dict[str, list[Path]]:
+def _validate_partitions(
+    data_dir: Path, expected_tickers: int
+) -> Dict[str, list[Path]]:
     partitions = {}
     for name in ("prices", "iv", "targets", "options"):
         part_dir = data_dir / name
@@ -67,9 +69,7 @@ def _validate_partitions(data_dir: Path, expected_tickers: int) -> Dict[str, lis
             raise FileNotFoundError(f"缺少 {name} 分区目录")
         files = sorted(part_dir.glob("ticker=*.parquet"))
         if len(files) != expected_tickers:
-            raise ValueError(
-                f"{name} 分区数量异常: {len(files)} != {expected_tickers}"
-            )
+            raise ValueError(f"{name} 分区数量异常: {len(files)} != {expected_tickers}")
         partitions[name] = files
     return partitions
 
@@ -146,7 +146,9 @@ def main() -> None:
     if not config:
         raise ValueError("config.yaml 为空")
 
-    calendar = pd.bdate_range(start=config["start_date"], end=config["end_date"], freq="B")
+    calendar = pd.bdate_range(
+        start=config["start_date"], end=config["end_date"], freq="B"
+    )
     expected_runs = _validate_run_id(args.universe, len(calendar))
     expected_tickers = int(pd.read_csv(args.universe)["ticker"].dropna().shape[0])
 

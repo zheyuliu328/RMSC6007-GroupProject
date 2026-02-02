@@ -77,9 +77,13 @@ def _upsert_index(df: pd.DataFrame, record: Dict[str, object]) -> pd.DataFrame:
         return pd.DataFrame([record], columns=INDEX_COLUMNS)
     run_id = record.get("run_id")
     if run_id in df["run_id"].values:
-        df.loc[df["run_id"] == run_id, INDEX_COLUMNS] = [record.get(col) for col in INDEX_COLUMNS]
+        df.loc[df["run_id"] == run_id, INDEX_COLUMNS] = [
+            record.get(col) for col in INDEX_COLUMNS
+        ]
         return df
-    return pd.concat([df, pd.DataFrame([record], columns=INDEX_COLUMNS)], ignore_index=True)
+    return pd.concat(
+        [df, pd.DataFrame([record], columns=INDEX_COLUMNS)], ignore_index=True
+    )
 
 
 def _scan_manifests() -> List[Dict[str, object]]:
@@ -194,7 +198,9 @@ def main() -> None:
             index_df = _upsert_index(index_df, record)
 
     if args.mode in ("t0", "both"):
-        tickers = [item.strip().upper() for item in args.tickers.split(",") if item.strip()]
+        tickers = [
+            item.strip().upper() for item in args.tickers.split(",") if item.strip()
+        ]
         for record in run_t0_capture(tickers, args.dry_run):
             index_df = _upsert_index(index_df, record)
 

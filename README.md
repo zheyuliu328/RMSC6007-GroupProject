@@ -13,6 +13,10 @@ This repository implements a comprehensive options risk management framework, co
 - Production-ready code with proper testing, documentation, and version control
 - Research methodology with reproducible data pipelines
 
+> **公告（MethodD 数据口径）**
+> 我已定义并锁定 MethodD 的 nasdaq-full v1 数据契约，所有人必须使用同一份数据口径复算结果。
+> 入口文件：`MethodD/DATA_README_v2.md`。
+
 ---
 
 ## 🎯 Implementation Methods

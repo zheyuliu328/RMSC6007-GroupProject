@@ -10,6 +10,12 @@ __pycache__/
 MethodD/data/snapshots/runs/
 MethodD/outputs/
 
+# MethodD nasdaq-full simulated data (generated)
+MethodD/data/simulated/nasdaq_full/v1/prices/
+MethodD/data/simulated/nasdaq_full/v1/iv/
+MethodD/data/simulated/nasdaq_full/v1/targets/
+MethodD/data/simulated/nasdaq_full/v1/options/
+
 # Temporary exports
 *.zip
 *.tar.gz

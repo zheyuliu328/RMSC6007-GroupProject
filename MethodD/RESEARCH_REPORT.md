@@ -1,113 +1,156 @@
-# MethodD 研究论证报告（研究协议 + 可复算模板）
+# MethodD 价格因子研究补充说明（Price Factors）
 
-## 目标说明
+## 目的
+在 IV 上升场景里，方向可能来自“上破扩张”或“下破扩张”。本补充引入三类价格因子，用连续分数统一刻画方向与强度，辅助判断 IV 上升时的对冲方向。
 
-本报告用于“因子有效性论证”，不做长期收益证明。
-所有结论必须可从 `outputs/sample_table_tradable.csv` 与 `outputs/stats_table_tradable.csv` 复算，
-**不允许**出现未在输出表中出现的数值。
+本次新增因子全部基于 **标的历史价格序列**（至少 200 日，建议 260+ 日），并写回 `sample_table`，用于在 `stats_table` 中检验对 `spot_return_5d` 与 `iv_change` 的关系。
 
 ---
 
-## 1. 因子定义与预测目标
+## 因子 P1：Bollinger Bands 位置 / 带宽
 
-### 1.1 因子定义（输入字段锁定）
+**定义（默认窗口 n=20）：**
 
-**IV 收敛因子（A/B 版本）**
+- 中轨：`MA20 = mean(Close_{t-19..t})`
+- 标准差：`SD20 = std(Close_{t-19..t})`
+- 上下轨：`Upper = MA20 + 2·SD20`，`Lower = MA20 − 2·SD20`
 
-- 期权选择规则：**30D 附近 ATM call，锁定同一 contractSymbol**
-- 预测目标：**同一合约的 IV 变化**
+**位置分数（方向连续变量）：**
 
 ```
-IV_change = IV_t5(contractSymbol) - IV_t0(contractSymbol)
-
-Factor A: f_t = (IV_t0 - median(IV)) / median(IV)
-Factor B: z_t = (IV_t0 - median(IV)) / MAD(IV)
+BB_pos = (Close_t − MA20) / (2·SD20)
 ```
 
-### 1.2 基准对照（必须输出）
+**带宽（波动状态）：**
 
-- **Baseline 1**：naive IV level（不标准化，仅用 IV_t0）
-- **Baseline 2**：lagged IV change（IV_change_{t-1}）
+```
+BB_bw = (Upper − Lower) / MA20 = 4·SD20 / MA20
+```
 
----
+**作用：**
+- `BB_pos` 表示短期分布中的相对位置，正值偏强、负值偏弱。
+- `BB_bw` 表示波动扩张或收敛状态。
 
-## 2. 研究协议（可审计约束）
+**为什么：**
+同样的 IV 上升，可能是“上涨突破”或“下跌崩溃”。`BB_pos` 把方向统一成可比较的连续分数，适合映射对冲强度。
 
-1. **预测目标锁定**：仅使用同一 contractSymbol 的 IV_t5 - IV_t0。
-2. **样本独立性修正**：显著性使用 block bootstrap（按 date×expiry 分组）。
-3. **控制变量**：控制 moneyness、spread、open interest，输出 partial IC。
-4. **分桶一致性**：按 moneyness / spread / open interest 分桶输出 IC。
-5. **可交易性主结论**：主结论仅使用 bid/ask>0 且点差合理的样本。
-6. **数据完整性**：manifest + checksum 缺失即 FAIL。
-7. **输出唯一来源**：仅允许引用 outputs 生成的 CSV。
+**例子：**
+- MA20=100，SD20=2，Close=104 → `BB_pos = 1.0`
+- MA20=100，SD20=2，Close=96 → `BB_pos = -1.0`
 
----
-
-## 3. 输出文件清单（唯一审计来源）
-
-| 类型 | 文件 | 说明 |
-|------|------|------|
-| 样本表 | `outputs/sample_table.csv` | 全量样本（含可交易标记） |
-| 样本表 | `outputs/sample_table_tradable.csv` | 可交易样本（主结论） |
-| 统计表 | `outputs/stats_table_tradable.csv` | 主结论统计（含 partial IC / bootstrap） |
-| 统计表 | `outputs/stats_table_full.csv` | 全量样本统计（附录） |
-| 单笔审计 | `outputs/nvda_covered_call_demo.csv` | 单笔复算（链路自洽验证） |
+**落地字段：**
+- `bb_pos_t0`
+- `bb_bw_t0`
 
 ---
 
-## 4. 可检验机制与假设
+## 因子 P2：MA200 突破强度
 
-### 4.1 均值回归假设
+**定义：**
 
-- **命题**：IV 水平高 → 未来 IV_change 更可能为负
-- **检验**：factor_a / factor_b vs iv_change 的 Spearman IC 与回归系数
+- `MA200 = mean(Close_{t-199..t})`
+- 标准化因子：`MA200_break = (Close_t − MA200) / ATR20`
 
-### 4.2 事件窗口失效
+**ATR20 说明：**
+- 标准版为 ATR（平均真实波幅）
+- 若暂缺 High/Low，则可用 20 日 close-to-close 波动替代
 
-- **命题**：财报窗口 IV 均值回归失效
-- **检验**：财报窗口过滤前后 IC/t-stat 对比（在 stats_table 标记）
+**作用：**
+衡量价格相对长期基准是否显著偏离，偏离越大越像 regime change。
 
-### 4.3 流动性约束
+**为什么：**
+短期动量在震荡期容易频繁翻转。MA200 是慢变量，可作为方向过滤器或权重。
 
-- **命题**：点差高或 openInterest 低时，预测强度下降
-- **检验**：按 spread / open interest 分桶输出 IC 一致性
+**例子：**
+- Close=210，MA200=200，ATR20=5 → `MA200_break = 2.0`
+- Close=195，MA200=200，ATR20=5 → `MA200_break = -1.0`
 
----
-
-## 5. 统计检验模板（仅引用 CSV 字段）
-
-### 5.1 主检验：IV 变化预测
-
-从 `stats_table_tradable.csv` 读取：
-- factor_a / factor_b 的 Spearman IC 与 t-stat
-- partial Spearman IC（控制变量后的结果）
-- block bootstrap t-stat（按 date×expiry）
-
-### 5.2 基准对照
-
-从 `stats_table_tradable.csv` 读取：
-- baseline_iv_level
-- baseline_iv_change_lag1
-
-### 5.3 分组失效
-
-从 `stats_table_tradable.csv` 读取：
-- spread_low / spread_high 对比
-- moneyness / spread / open_interest 分桶对比
+**落地字段：**
+- `ma200_break_t0`
 
 ---
 
-## 6. 结果解读模板（占位）
+## 因子 P3：MACD 趋势强度（Histogram）
 
--- 主检验 IC 与 t-stat：____（引用 stats_table_tradable）
--- partial IC 与 bootstrap t-stat：____（引用 stats_table_tradable）
--- Factor A/B 相对基准的提升：____（引用 stats_table_tradable）
--- 分桶一致性结论：____（引用 stats_table_tradable）
+**定义（12,26,9）：**
+
+- `EMA12 = EMA(Close, 12)`
+- `EMA26 = EMA(Close, 26)`
+- `MACD = EMA12 − EMA26`
+- `Signal = EMA(MACD, 9)`
+- `MACD_hist = MACD − Signal`
+
+**作用：**
+`MACD_hist` 为方向 + 强度的连续量，正且扩大为上行动量增强，负且变小为下行动量增强。
+
+**为什么：**
+对冲强度需要连续量，不是单纯多空。MACD_hist 自带强弱信息，适合映射 hedge ratio。
+
+**落地字段：**
+- `macd_hist_t0`
 
 ---
 
-## 7. 复现与审计声明
+## 落地方式（最小改动）
 
-- 任何结论必须可从 `outputs/sample_table_tradable.csv` 与 `outputs/stats_table_tradable.csv` 复算
-- 文档中不得出现未出现在 outputs 的具体数值
-- Demo 样例仅用于流程演示，不可进入研究结论
+### 1) 拉取历史价格序列
+在研究脚本中以 `ticker + t0_timestamp` 为锚点，回溯 260~400 个交易日日线，取 Close（及 High/Low）。
+
+### 2) 写回 sample_table
+对同一 run 的全部合约写入同一组标的级特征：
+
+- `bb_pos_t0`
+- `bb_bw_t0`
+- `ma200_break_t0`
+- `macd_hist_t0`
+
+同时补齐会议口径的门控字段与阈值（仅用于 gate，不影响连续特征）：
+
+- `iv_signal_median10`：`(IV_t - median(IV_{t-9..t})) / median(IV_{t-9..t})`
+- `macd_cross_flag`：MACD 线与 Signal 线交叉（含方向判断）
+- `macd_fast_slope`：快线 EMA 的一阶差分斜率
+- `bb_midline_break_flag`：价格相对 10 日均线的突破布尔值
+- `bb_break_side`：突破方向（above/below）
+
+门控阈值使用固定值：`iv_signal_threshold = 0.15`（不走分位数）
+
+并新增方向目标：
+
+```
+spot_return_5d = (spot_t5 - spot_t0) / spot_t0
+```
+
+### 3) stats_table 检验
+- 对 `spot_return_5d` 做 Spearman IC 与回归
+- 并在 `iv_change > 0` 子样本上重复检验，直指“IV 上升时的方向”问题
+
+---
+
+## 数据机制提醒（必须注明）
+
+当前管道若 `t0` 与 `t5` 来自同日补抓，`spot_return_5d` 会接近 0，因子无法体现方向预测力。必须用 `scheduled_capture` 产生真实 5 个交易日间隔样本后再检验。
+
+---
+
+## 代码落地字段清单
+
+**sample_table 新增列：**
+- `bb_pos_t0`
+- `bb_bw_t0`
+- `ma200_break_t0`
+- `macd_hist_t0`
+- `spot_return_5d`
+- `iv_signal_median10`
+- `macd_cross_flag`
+- `macd_fast_slope`
+- `bb_midline_break_flag`
+- `bb_break_side`
+
+**stats_table 新增目标/分组：**
+- target: `spot_return_5d`
+- group: `iv_change_pos`（只看 `iv_change > 0` 子样本）
+
+---
+
+## 对外话术（最简版）
+我们加三个 price 因子不是为了预测收益，而是为了解决 IV 上升时方向不确定的问题。Bollinger 给短期位置分数，MA200 给长期趋势过滤强度，MACD_hist 给方向动量强弱。我们用 5 日标的回报方向 `spot_return_5d` 做验证，并在 `iv_change > 0` 子样本里做条件检验，直接回答“IV 上升到底更可能涨还是跌”。

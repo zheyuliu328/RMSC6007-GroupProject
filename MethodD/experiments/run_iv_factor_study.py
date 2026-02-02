@@ -5,10 +5,11 @@ IV 收敛因子研究：前向样本累积 + 可复算统计输出
 import os
 import sys
 import json
-from datetime import datetime
-from typing import Dict, List
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
+import yfinance as yf
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
@@ -19,7 +20,19 @@ from src.data.snapshot_store import (
 )
 from src.data.real_data_loader import load_snapshot
 from src.factor.factor_definition import IVFactorDefinition
+from src.factor.price_factors import (
+    compute_atr,
+    compute_bollinger,
+    compute_bb_midline_break,
+    compute_ma200_break,
+    compute_macd_cross_fast_slope,
+    compute_macd_hist,
+)
 from src.eval.metrics import FactorMetrics
+from src.signal.signal_policy import (
+    TripleGateConfig,
+    apply_triple_gate_signals,
+)
 
 
 OUTPUT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'outputs')
@@ -29,6 +42,14 @@ MAX_SPREAD_RATIO = 0.5
 MIN_OPEN_INTEREST = 1
 MIN_TRADABLE_PRICE = 0.01
 DEFAULT_BOOTSTRAP = 500
+HISTORY_LOOKBACK_DAYS = 400
+TRIPLE_GATE_CONFIG = TripleGateConfig(
+    iv_thr=0.15,
+    ma_thr=1.0,
+    bb_pos_thr=1.0,
+    bb_bw_thr=0.04,
+    use_bb_bw_filter=False,
+)
 
 
 def _ensure_output_dir() -> None:
@@ -160,6 +181,66 @@ def _calc_mid(bid: float, ask: float, last: float) -> Dict[str, object]:
     return {'price_used': None, 'price_source': 'missing'}
 
 
+def _parse_timestamp(ts_value: object) -> Optional[pd.Timestamp]:
+    if ts_value is None or pd.isna(ts_value):
+        return None
+    try:
+        if isinstance(ts_value, (int, float)) or str(ts_value).isdigit():
+            return pd.to_datetime(ts_value, unit='s')
+        return pd.to_datetime(ts_value)
+    except Exception:
+        return None
+
+
+def _download_price_history(ticker: str, end_ts: object) -> Optional[pd.DataFrame]:
+    if not ticker:
+        return None
+    end_dt = _parse_timestamp(end_ts)
+    if end_dt is None:
+        return None
+    start_dt = end_dt - timedelta(days=HISTORY_LOOKBACK_DAYS)
+    history = yf.download(
+        ticker,
+        start=start_dt.strftime('%Y-%m-%d'),
+        end=(end_dt + timedelta(days=1)).strftime('%Y-%m-%d'),
+        progress=False,
+        auto_adjust=False,
+    )
+    if history is None or history.empty:
+        return None
+    if isinstance(history.columns, pd.MultiIndex):
+        history.columns = [item[0] for item in history.columns]
+    history = history.reset_index()
+    if 'Close' not in history.columns:
+        return None
+    history = history.dropna(subset=['Close'])
+    return history
+
+
+def _compute_price_factors(history: pd.DataFrame) -> Tuple[float, float, float, float, int, float, int, int]:
+    if history is None or history.empty:
+        return float('nan'), float('nan'), float('nan'), float('nan'), 0, float('nan'), 0, 0
+    close = history['Close']
+    high = history['High'] if 'High' in history.columns else None
+    low = history['Low'] if 'Low' in history.columns else None
+    bb_pos, bb_bw = compute_bollinger(close)
+    bb_mid_flag, bb_mid_side = compute_bb_midline_break(close)
+    atr = compute_atr(high, low, close)
+    ma200_break = compute_ma200_break(close, atr)
+    macd_hist = compute_macd_hist(close)
+    macd_cross_flag, macd_fast_slope = compute_macd_cross_fast_slope(close)
+    return (
+        bb_pos,
+        bb_bw,
+        ma200_break,
+        macd_hist,
+        macd_cross_flag,
+        macd_fast_slope,
+        bb_mid_flag,
+        bb_mid_side,
+    )
+
+
 def build_sample_table() -> pd.DataFrame:
     manifests = _collect_manifests()
     rows = []
@@ -197,6 +278,21 @@ def build_sample_table() -> pd.DataFrame:
             t5_snapshot = load_snapshot(t5_path)
             if 'chain' not in t0_snapshot or 'chain' not in t5_snapshot:
                 continue
+
+            price_history = _download_price_history(
+                manifest.get('ticker'),
+                t0_snapshot.get('timestamp'),
+            )
+            (
+                bb_pos,
+                bb_bw,
+                ma200_break,
+                macd_hist,
+                macd_cross_flag,
+                macd_fast_slope,
+                bb_mid_flag,
+                bb_mid_side,
+            ) = _compute_price_factors(price_history)
 
             t0_chain = _filter_chain_by_expiry(t0_snapshot['chain'], expiry_key)
             t5_chain = _filter_chain_by_expiry(t5_snapshot['chain'], expiry_key)
@@ -244,6 +340,7 @@ def build_sample_table() -> pd.DataFrame:
                     'spot_t0': spot_t0,
                     'spot_t5': spot_t5,
                     'spot_change': spot_t5 - spot_t0,
+                    'spot_return_5d': (spot_t5 - spot_t0) / spot_t0 if spot_t0 else None,
                     'moneyness_t0': None if strike is None else float(strike) / spot_t0,
                     'iv_t0': iv_t0,
                     'iv_t5': iv_t5,
@@ -264,6 +361,14 @@ def build_sample_table() -> pd.DataFrame:
                     'open_interest_t5': row.get('openInterest_t5'),
                     'data_source': manifest.get('data_source'),
                     'pricing_rule': manifest.get('pricing_rule'),
+                    'bb_pos_t0': bb_pos,
+                    'bb_bw_t0': bb_bw,
+                    'ma200_break_t0': ma200_break,
+                    'macd_hist_t0': macd_hist,
+                    'macd_cross_flag': macd_cross_flag,
+                    'macd_fast_slope': macd_fast_slope,
+                    'bb_midline_break_flag': bb_mid_flag,
+                    'bb_break_side': bb_mid_side,
                 }
 
                 sample_row['is_tradable'] = _is_liquid_row(pd.Series(sample_row))
@@ -276,9 +381,86 @@ def build_sample_table() -> pd.DataFrame:
     sample_df = sample_df.sort_values('t0_timestamp').reset_index(drop=True)
     sample_df['factor_a'] = IVFactorDefinition.compute_factor_version_a(sample_df['iv_t0'])
     sample_df['factor_b'] = IVFactorDefinition.compute_factor_version_b(sample_df['iv_t0'])
+    sample_df['iv_signal_median10'] = sample_df['factor_a']
+    sample_df['iv_signal'] = sample_df['iv_signal_median10']
     sample_df['baseline_iv_level'] = sample_df['iv_t0']
     sample_df['baseline_iv_change_lag1'] = sample_df['iv_change'].shift(1)
     return sample_df
+
+
+def _quantile_threshold(series: pd.Series, q: float) -> float:
+    clean = series.dropna()
+    if clean.empty:
+        return float('nan')
+    return float(clean.quantile(q))
+
+
+def _print_gate_stats(run_df: pd.DataFrame, use_quantile: bool) -> None:
+    if run_df.empty:
+        print("门控统计: run_df 为空，跳过")
+        return
+
+    iv_trigger = run_df['iv_signal'] >= run_df['iv_thr']
+    ma_trigger = run_df['ma_abs'] >= run_df['ma_thr']
+    macd_trigger = run_df.get('macd_cross_flag', 0).isin([1, -1])
+    bb_trigger = run_df.get('bb_midline_break_flag', 0) == 1
+    triple_trigger = iv_trigger & ma_trigger & macd_trigger & bb_trigger
+
+    def _ratio(mask: pd.Series) -> float:
+        return float(mask.mean()) if len(mask) else 0.0
+
+    label = "分位数阈值" if use_quantile else "固定阈值"
+    print(f"三门控通过率统计 ({label}):")
+    print(f"- IV_gate:  {iv_trigger.sum()} / {len(run_df)} ({_ratio(iv_trigger):.2%})")
+    print(f"- MA_gate:  {ma_trigger.sum()} / {len(run_df)} ({_ratio(ma_trigger):.2%})")
+    print(f"- MACD_gate:{macd_trigger.sum()} / {len(run_df)} ({_ratio(macd_trigger):.2%})")
+    print(f"- BB_gate:  {bb_trigger.sum()} / {len(run_df)} ({_ratio(bb_trigger):.2%})")
+    print(f"- 交集:     {triple_trigger.sum()} / {len(run_df)} ({_ratio(triple_trigger):.2%})")
+
+
+def _attach_triple_gate_signals(sample_df: pd.DataFrame) -> pd.DataFrame:
+    if sample_df.empty:
+        return sample_df
+    run_cols = [
+        'run_id',
+        'iv_signal',
+        'ma200_break_t0',
+        'bb_pos_t0',
+        'bb_bw_t0',
+        'macd_cross_flag',
+        'macd_fast_slope',
+        'bb_midline_break_flag',
+        'bb_break_side',
+    ]
+    run_df = sample_df[run_cols].drop_duplicates(subset=['run_id']).reset_index(drop=True)
+
+    run_df['ma_abs'] = run_df['ma200_break_t0'].abs()
+    run_df['bb_abs'] = run_df['bb_pos_t0'].abs()
+
+    use_quantile = False
+    iv_thr = TRIPLE_GATE_CONFIG.iv_thr
+    ma_thr = TRIPLE_GATE_CONFIG.ma_thr
+    bb_thr = TRIPLE_GATE_CONFIG.bb_pos_thr
+
+    run_df['iv_thr'] = iv_thr
+    run_df['ma_thr'] = ma_thr
+    run_df['bb_pos_thr'] = bb_thr
+
+    config = TripleGateConfig(
+        iv_thr=iv_thr,
+        ma_thr=ma_thr,
+        bb_pos_thr=bb_thr,
+        bb_bw_thr=TRIPLE_GATE_CONFIG.bb_bw_thr,
+        use_bb_bw_filter=False,
+    )
+
+    _print_gate_stats(run_df, use_quantile)
+    signals = apply_triple_gate_signals(run_df, config)
+    run_df = pd.concat([run_df[['run_id']], signals], axis=1)
+    merged = sample_df.merge(run_df, on='run_id', how='left')
+    merged['signal_flag'] = merged['signal_flag'].fillna(0).astype(int)
+    merged['signal_side'] = merged['signal_side'].fillna(0).astype(int)
+    return merged
 
 
 def _make_group_labels(sample_df: pd.DataFrame) -> pd.Series:
@@ -319,12 +501,17 @@ def build_stats_table(sample_df: pd.DataFrame) -> pd.DataFrame:
     stats_rows = []
     targets = {
         'iv_change': sample_df['iv_change'],
+        'spot_return_5d': sample_df.get('spot_return_5d'),
     }
     factors = {
         'factor_a': sample_df['factor_a'],
         'factor_b': sample_df['factor_b'],
         'baseline_iv_level': sample_df['baseline_iv_level'],
         'baseline_iv_change_lag1': sample_df['baseline_iv_change_lag1'],
+        'bb_pos_t0': sample_df.get('bb_pos_t0'),
+        'bb_bw_t0': sample_df.get('bb_bw_t0'),
+        'ma200_break_t0': sample_df.get('ma200_break_t0'),
+        'macd_hist_t0': sample_df.get('macd_hist_t0'),
     }
 
     sample_df = sample_df.copy()
@@ -333,6 +520,8 @@ def build_stats_table(sample_df: pd.DataFrame) -> pd.DataFrame:
 
     for factor_name, factor_series in factors.items():
         for target_name, target_series in targets.items():
+            if factor_series is None or target_series is None:
+                continue
             ic_stats = FactorMetrics.spearman_ic_tstat(factor_series, target_series)
             reg_stats = FactorMetrics.linear_regression_stats(factor_series, target_series)
             partial_ic = FactorMetrics.partial_spearman_ic(factor_series, target_series, control_vars)
@@ -360,6 +549,55 @@ def build_stats_table(sample_df: pd.DataFrame) -> pd.DataFrame:
                 'stderr': reg_stats['stderr'],
                 'group': 'all'
             })
+
+            if 'iv_change' in sample_df.columns:
+                subset = sample_df[sample_df['iv_change'] > 0]
+                if subset.empty:
+                    stats_rows.append({
+                        'factor': factor_name,
+                        'target': target_name,
+                        'n': 0,
+                        'spearman_ic': 0.0,
+                        'spearman_t_stat': 0.0,
+                        'partial_spearman_ic': None,
+                        'partial_spearman_t': None,
+                        'bootstrap_ic_mean': None,
+                        'bootstrap_ic_std': None,
+                        'bootstrap_t_stat': None,
+                        'beta': 0.0,
+                        'alpha': 0.0,
+                        'r_value': 0.0,
+                        'p_value': 1.0,
+                        'stderr': 0.0,
+                        'group': 'iv_change_pos'
+                    })
+                else:
+                    ic_stats = FactorMetrics.spearman_ic_tstat(
+                        subset[factor_name],
+                        subset[target_name],
+                    )
+                    reg_stats = FactorMetrics.linear_regression_stats(
+                        subset[factor_name],
+                        subset[target_name],
+                    )
+                    stats_rows.append({
+                        'factor': factor_name,
+                        'target': target_name,
+                        'n': ic_stats['n'],
+                        'spearman_ic': ic_stats['ic'],
+                        'spearman_t_stat': ic_stats['t_stat'],
+                        'partial_spearman_ic': None,
+                        'partial_spearman_t': None,
+                        'bootstrap_ic_mean': None,
+                        'bootstrap_ic_std': None,
+                        'bootstrap_t_stat': None,
+                        'beta': reg_stats['beta'],
+                        'alpha': reg_stats['alpha'],
+                        'r_value': reg_stats['r_value'],
+                        'p_value': reg_stats['p_value'],
+                        'stderr': reg_stats['stderr'],
+                        'group': 'iv_change_pos'
+                    })
 
     if 'spread_t0' in sample_df.columns:
         median_spread = sample_df['spread_t0'].median(skipna=True)
@@ -396,12 +634,27 @@ def build_stats_table(sample_df: pd.DataFrame) -> pd.DataFrame:
 def main() -> None:
     _ensure_output_dir()
     sample_df = build_sample_table()
+    sample_df = _attach_triple_gate_signals(sample_df)
     sample_path = os.path.join(OUTPUT_DIR, 'sample_table.csv')
     sample_df.to_csv(sample_path, index=False)
 
-    tradable_df = sample_df[sample_df['is_tradable'] == True].copy()
+    tradable_df = sample_df[(sample_df['is_tradable'] == True) &
+                            (sample_df['signal_flag'] == 1)].copy()
     tradable_path = os.path.join(OUTPUT_DIR, 'sample_table_tradable.csv')
     tradable_df.to_csv(tradable_path, index=False)
+
+    run_count = sample_df['run_id'].nunique() if 'run_id' in sample_df.columns else 0
+    tradable_run_count = tradable_df['run_id'].nunique() if 'run_id' in tradable_df.columns else 0
+    signal_ok = True
+    if not tradable_df.empty and 'signal_flag' in tradable_df.columns:
+        signal_ok = (tradable_df['signal_flag'] == 1).all()
+
+    print("研究状态验收:")
+    print(f"- unique run_id: {run_count}")
+    print(f"- tradable run_id: {tradable_run_count}")
+    print(f"- tradable signal_flag 全为 1: {signal_ok}")
+    if run_count < 30:
+        print("- 提示: run_id 数量不足 30，门控通过率统计不具备研究意义")
 
     stats_df = build_stats_table(tradable_df)
     stats_path = os.path.join(OUTPUT_DIR, 'stats_table_tradable.csv')

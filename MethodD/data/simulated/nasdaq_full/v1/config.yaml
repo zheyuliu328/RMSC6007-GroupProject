@@ -1,0 +1,45 @@
+dataset_version: v1
+seed: 42
+start_date: '2024-01-02'
+end_date: '2024-12-31'
+init_price: 100.0
+regime_min_days: 20
+regime_max_days: 60
+regimes:
+- name: up_lowvol
+  drift: 0.0008
+  vol: 0.008
+  iv_level: 0.18
+- name: up_highvol
+  drift: 0.0006
+  vol: 0.014
+  iv_level: 0.24
+- name: down_lowvol
+  drift: -0.0007
+  vol: 0.01
+  iv_level: 0.22
+- name: down_highvol
+  drift: -0.001
+  vol: 0.018
+  iv_level: 0.28
+iv_params:
+  iv_base: 0.2
+  iv_vol: 0.02
+  iv_floor: 0.05
+  iv_mean_revert: 0.18
+  jump_prob: 0.06
+  jump_scale: 0.08
+  baseline_window: 10
+  spike_reversion_boost: 2.5
+  spike_vol_boost: 0.9
+  corr_ret_iv: -0.4
+pool_params:
+  mcap_top_quantile: 0.7
+  beta_top_quantile: 0.7
+options_params:
+  tenor_days:
+    - 7
+  strike_type: ATM
+  risk_free_rate: 0.02
+signal_params:
+  iv_signal_threshold: 0.15

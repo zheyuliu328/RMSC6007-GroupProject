@@ -153,6 +153,136 @@ MethodD/
     └── processed/                    # 清洗后数据
 ```
 
+## 🧪 nasdaq-full v1 模拟数据（统一接口契约）
+
+**目标**：同一份输入、全员复算一致；覆盖全 Nasdaq 股票；一次生成足够多 run；版本可追踪可回滚。
+
+**核心变化**：
+- 以 `nasdaqlisted_snapshot.txt` 快照 + `universe.csv` 驱动全量股票生成
+- 每只股票独立分区 Parquet，避免单文件过大（Git 友好）
+- 生成器使用 `seed + hash(ticker)` 保证每 ticker 可复现
+
+**目录结构**（仅提交配置与快照，生成数据不入库）：
+
+```
+data/
+  universe/
+    nasdaq/
+      nasdaqlisted_snapshot.txt
+      universe.csv
+  simulated/
+    nasdaq_full/
+      v1/
+        config.yaml
+        manifest.json
+        universe_meta.csv
+        pool_membership.csv
+        prices/
+          ticker=AAA.parquet
+        iv/
+          ticker=AAA.parquet
+        targets/
+          ticker=AAA.parquet
+        options/
+          ticker=AAA.parquet
+```
+
+### 关键字段
+
+- **run_id**：`"{date}|{ticker}"`（run 级门控与统计的唯一键）
+- **seed**：写入 `config.yaml`，保证完全复现
+
+### Schema v1（分区文件一致）
+
+**prices parquet**
+- date (YYYY-MM-DD)
+- ticker (string)
+- run_id (string)
+- close (float)
+
+**iv parquet**
+- date
+- ticker
+- run_id
+- iv (float)
+
+**targets parquet**
+- date
+- ticker
+- run_id
+- spot_return_5d
+- iv_change_5d
+
+**config.yaml**
+- seed, start_date, end_date, regimes, iv_params（含 corr_ret_iv / jump_prob 等）
+
+**manifest.json**
+- dataset_version
+- sha256（config + universe 快照 hash）
+- partitions（prices/iv/targets/options 分区数量）
+- created_at
+
+**universe_meta.csv**
+- ticker
+- market_cap
+- beta
+
+**pool_membership.csv**
+- ticker
+- market_cap
+- beta
+- mcap_thr
+- beta_thr
+- mcap_pass
+- beta_pass
+- in_pool
+
+**options parquet**
+- date
+- ticker
+- run_id
+- tenor_days
+- strike_type（ATM）
+- call_premium
+- put_premium
+
+### 生成与验收（本地统一命令）
+
+```bash
+# 生成 nasdaq-full v1（可重复生成，同 config 得到一致结果）
+python3 scripts/generate_sim_data.py \
+  --config data/simulated/nasdaq_full/v1/config.yaml \
+  --universe data/universe/nasdaq/universe.csv
+
+# 验收（hash/分区数量/run_id/IV spike 频率）
+python3 scripts/validate_sim_data.py \
+  --data-dir data/simulated/nasdaq_full/v1 \
+  --universe data/universe/nasdaq/universe.csv
+```
+
+**验收补充检查**
+- `universe_meta.csv` 与 `pool_membership.csv` 是否生成
+- `options/` 分区数量是否等于 ticker 数量
+- `config.yaml` 中 `iv_signal_threshold = 0.15`
+
+### Universe 快照说明
+
+- 来源：https://www.nasdaqtrader.com/dynamic/symdir/nasdaqlisted.txt
+- 快照保存在 `data/universe/nasdaq/nasdaqlisted_snapshot.txt`
+- 解析命令：
+
+```bash
+python3 scripts/fetch_universe.py --snapshot data/universe/nasdaq/nasdaqlisted_snapshot.txt
+```
+
+### 组员统一用法
+
+1. 读取 `data/simulated/nasdaq_full/v1/` 下分区文件（prices/iv/targets/options）
+2. run_id 统一为 `date|ticker`
+3. 使用 `universe_meta.csv`/`pool_membership.csv` 固化股票池（mcap/beta top 30%）
+4. 先对照 `manifest.json` 校验 hash 与分区数量，再跑信号与回测模块
+5. 生成数据不提交 Git，仅提交配置、脚本与 manifest
+
 ## 🚀 快速开始
 
 ### 1. 安装依赖

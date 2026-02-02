@@ -137,7 +137,9 @@ def _pick_expiries(now_epoch: int, expirations: List[int], count: int = 3) -> Li
     return selected
 
 
-def _find_atm_call(option_chain: Dict[str, Any], spot: float) -> Tuple[float, Dict[str, Any]]:
+def _find_atm_call(
+    option_chain: Dict[str, Any], spot: float
+) -> Tuple[float, Dict[str, Any]]:
     calls = option_chain.get("calls") or []
     if not calls:
         raise ValueError("该 expiry 下 calls 为空")
@@ -151,28 +153,49 @@ def _find_atm_call(option_chain: Dict[str, Any], spot: float) -> Tuple[float, Di
     raise ValueError("找不到 ATM strike 对应的 call 记录")
 
 
-def _find_atm_call_df(calls_df: pd.DataFrame, spot: float) -> Tuple[float, Dict[str, Any]]:
+def _find_atm_call_df(
+    calls_df: pd.DataFrame, spot: float
+) -> Tuple[float, Dict[str, Any]]:
     if calls_df is None or calls_df.empty:
         raise ValueError("该 expiry 下 calls 为空")
     calls_df = calls_df.copy()
-    calls_df['strike_diff'] = (calls_df['strike'] - spot).abs()
-    atm_call = calls_df.loc[calls_df['strike_diff'].idxmin()]
-    return float(atm_call['strike']), atm_call.to_dict()
+    calls_df["strike_diff"] = (calls_df["strike"] - spot).abs()
+    atm_call = calls_df.loc[calls_df["strike_diff"].idxmin()]
+    return float(atm_call["strike"]), atm_call.to_dict()
 
 
 def _normalize_chain(df: pd.DataFrame, expiry: str, option_type: str) -> pd.DataFrame:
     if df is None or df.empty:
-        return pd.DataFrame(columns=['expiry', 'strike', 'bid', 'ask', 'last', 'iv', 'contractSymbol', 'optionType', 'openInterest'])
+        return pd.DataFrame(
+            columns=[
+                "expiry",
+                "strike",
+                "bid",
+                "ask",
+                "last",
+                "iv",
+                "contractSymbol",
+                "optionType",
+                "openInterest",
+            ]
+        )
 
     normalized = df.copy()
-    normalized['expiry'] = expiry
-    normalized['optionType'] = option_type
-    rename_map = {
-        'lastPrice': 'last',
-        'impliedVolatility': 'iv'
-    }
+    normalized["expiry"] = expiry
+    normalized["optionType"] = option_type
+    rename_map = {"lastPrice": "last", "impliedVolatility": "iv"}
     normalized = normalized.rename(columns=rename_map)
-    columns = ['expiry', 'strike', 'bid', 'ask', 'last', 'iv', 'contractSymbol', 'optionType', 'openInterest']
+    columns = [
+        "expiry",
+        "strike",
+        "bid",
+        "ask",
+        "last",
+        "iv",
+        "contractSymbol",
+        "optionType",
+        "openInterest",
+    ]
     for col in columns:
         if col not in normalized.columns:
             normalized[col] = pd.NA
@@ -201,10 +224,10 @@ def capture_t0(ticker: str, run_id: Optional[str] = None) -> str:
     run_dir.mkdir(parents=True, exist_ok=True)
 
     ticker_obj = yf.Ticker(ticker)
-    spot_df = ticker_obj.history(period='1d', interval='1d')
+    spot_df = ticker_obj.history(period="1d", interval="1d")
     if spot_df.empty:
         raise ValueError(f"无法获取 {ticker} 现价")
-    spot = float(spot_df['Close'].iloc[-1])
+    spot = float(spot_df["Close"].iloc[-1])
     tz_name = datetime.now().astimezone().tzname() or "UTC"
     now_epoch = int(time.time())
 
@@ -233,10 +256,13 @@ def capture_t0(ticker: str, run_id: Optional[str] = None) -> str:
             if not contract_symbol:
                 raise ValueError("ATM call 缺少 contractSymbol")
 
-        chain_df = pd.concat([
-            _normalize_chain(calls_df, expiry, 'call'),
-            _normalize_chain(puts_df, expiry, 'put')
-        ], ignore_index=True)
+        chain_df = pd.concat(
+            [
+                _normalize_chain(calls_df, expiry, "call"),
+                _normalize_chain(puts_df, expiry, "put"),
+            ],
+            ignore_index=True,
+        )
 
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         snap_name = f"{ticker.lower()}_chain_t0_{expiry}_{stamp}.json"
@@ -253,7 +279,7 @@ def capture_t0(ticker: str, run_id: Optional[str] = None) -> str:
             },
             "expiry_epoch": int(pd.to_datetime(expiry).timestamp()),
             "spot": spot,
-            "chain": chain_df.to_dict(orient='records'),
+            "chain": chain_df.to_dict(orient="records"),
         }
         _write_json(snap_path, snapshot)
         _write_sha256(snap_path)
@@ -323,10 +349,10 @@ def capture_t5(run_id: str) -> None:
         raise ValueError("manifest 缺少 ticker 或 expiries")
 
     ticker_obj = yf.Ticker(ticker)
-    spot_df = ticker_obj.history(period='1d', interval='1d')
+    spot_df = ticker_obj.history(period="1d", interval="1d")
     if spot_df.empty:
         raise ValueError(f"无法获取 {ticker} 现价")
-    spot = float(spot_df['Close'].iloc[-1])
+    spot = float(spot_df["Close"].iloc[-1])
     tz_name = datetime.now().astimezone().tzname() or manifest.get("timezone") or "UTC"
     now_epoch = int(time.time())
 
@@ -338,10 +364,13 @@ def capture_t5(run_id: str) -> None:
         if calls_df is None or calls_df.empty:
             continue
 
-        chain_df = pd.concat([
-            _normalize_chain(calls_df, str(expiry), 'call'),
-            _normalize_chain(puts_df, str(expiry), 'put')
-        ], ignore_index=True)
+        chain_df = pd.concat(
+            [
+                _normalize_chain(calls_df, str(expiry), "call"),
+                _normalize_chain(puts_df, str(expiry), "put"),
+            ],
+            ignore_index=True,
+        )
 
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         snap_name = f"{ticker.lower()}_chain_t5_{expiry}_{stamp}.json"
@@ -358,7 +387,7 @@ def capture_t5(run_id: str) -> None:
             },
             "expiry_epoch": int(pd.to_datetime(expiry).timestamp()),
             "spot": spot,
-            "chain": chain_df.to_dict(orient='records'),
+            "chain": chain_df.to_dict(orient="records"),
         }
         _write_json(snap_path, snapshot)
         _write_sha256(snap_path)
